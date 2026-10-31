@@ -3,8 +3,6 @@
 
 import os
 import re
-import subprocess
-import sys
 
 from qgis.PyQt.QtGui import QIcon
 from qgis.PyQt.QtWidgets import QAction, QMessageBox
@@ -32,20 +30,6 @@ LAYER_COLORS = {
     "medical": ("#e394a8", "#a04f63"),
     "cultural": ("#c2b280", "#7a6f50"),
 }
-
-
-def _find_python():
-    """Ищет python для запуска pip (в QGIS sys.executable — это сам QGIS)."""
-    candidates = [
-        os.path.join(sys.exec_prefix, "python.exe"),
-        os.path.join(sys.exec_prefix, "python3.exe"),
-        os.path.join(sys.exec_prefix, "bin", "python3"),
-        sys.executable,
-    ]
-    for c in candidates:
-        if c and os.path.exists(c):
-            return c
-    return sys.executable
 
 
 class YandexBuildingsPlugin:
@@ -96,35 +80,14 @@ class YandexBuildingsPlugin:
     # ------------------------------------------------------------------
 
     def _ensure_deps(self):
+        """Проверяет OpenCV. Сам модуль ничего не устанавливает —
+        при отсутствии библиотеки показывает инструкцию."""
         try:
             import cv2  # noqa: F401
             return True
         except ImportError:
-            pass
-
-        res = QMessageBox.question(
-            self.iface.mainWindow(), tr("dep_title"), tr("dep_text"),
-            QMessageBox.Yes | QMessageBox.No)
-        if res != QMessageBox.Yes:
             QMessageBox.information(self.iface.mainWindow(),
-                                    tr("dep_manual_title"), tr("dep_manual"))
-            return False
-
-        python = _find_python()
-        try:
-            kwargs = {}
-            if os.name == "nt":
-                kwargs["creationflags"] = 0x08000000  # CREATE_NO_WINDOW
-            subprocess.check_call(
-                [python, "-m", "pip", "install", "opencv-python-headless"],
-                **kwargs)
-            import importlib
-            importlib.invalidate_caches()
-            import cv2  # noqa: F401
-            return True
-        except Exception as e:
-            QMessageBox.warning(self.iface.mainWindow(), tr("dep_fail_title"),
-                                tr("dep_fail", err=e))
+                                    tr("dep_title"), tr("dep_manual"))
             return False
 
     # ------------------------------------------------------------------

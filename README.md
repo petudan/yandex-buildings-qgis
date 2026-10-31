@@ -31,9 +31,11 @@ From the QGIS plugin repository: *Plugins → Manage and Install Plugins*,
 search for **Yandex Buildings Extractor**. Or download a release ZIP and use
 *Install from ZIP*.
 
-The plugin requires `opencv-python-headless`; on first launch it offers to
-install it automatically. Manual install: open OSGeo4W Shell and run
-`pip install opencv-python-headless`.
+The plugin requires `opencv-python-headless`. Install it once: open
+OSGeo4W Shell and run `pip install opencv-python-headless`, then restart QGIS.
+
+Модулю нужна библиотека `opencv-python-headless`: откройте OSGeo4W Shell,
+выполните `pip install opencv-python-headless` и перезапустите QGIS.
 
 Detailed notes and version history (RU): [yandex_buildings/README.md](yandex_buildings/README.md).
 

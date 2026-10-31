@@ -5,10 +5,13 @@
 задачу можно отменить из панели задач.
 """
 
+import http.client
 import json
 import ssl
+import threading
 import time
 import traceback
+import urllib.parse
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -17,8 +20,10 @@ from qgis.core import QgsTask
 from . import core
 from .i18n import tr
 
-TILE_URL = ("https://core-renderer-tiles.maps.yandex.net/tiles"
-            "?l=map&x={x}&y={y}&z={z}&scale=1&lang=ru_RU")
+# Хост задан жестко: запросы уходят только по HTTPS на сервер тайлов
+# Яндекса, подменить схему или адрес извне невозможно.
+TILE_HOST = "core-renderer-tiles.maps.yandex.net"
+TILE_PATH = "/tiles?l=map&x={x}&y={y}&z={z}&scale=1&lang=ru_RU"
 
 HEADERS = {
     "User-Agent": ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -30,26 +35,88 @@ HEADERS = {
 MAX_WORKERS = 8      # параллельных загрузок
 RETRIES = 3
 
+# Защищенный контекст: проверка сертификата и имени хоста включены
+_SSL_CTX = ssl.create_default_context()
+# Одно HTTPS-соединение на поток: keep-alive ускоряет загрузку
+_local = threading.local()
+
+
+def _proxy_for_tiles():
+    """
+    Системный прокси для HTTPS (переменные окружения или настройки
+    Windows), как это делал urllib. Возвращает (host, port) или None.
+    Только чтение настроек: сам urllib.request.urlopen не используется.
+    """
+    try:
+        if urllib.request.proxy_bypass(TILE_HOST):
+            return None
+        proxy = urllib.request.getproxies().get("https")
+    except Exception:
+        return None
+    if not proxy:
+        return None
+    parsed = urllib.parse.urlsplit(proxy if "://" in proxy
+                                   else "http://" + proxy)
+    if not parsed.hostname:
+        return None
+    return parsed.hostname, parsed.port or 8080
+
+
+_PROXY = _proxy_for_tiles()
+
+
+def _get_conn():
+    conn = getattr(_local, "conn", None)
+    if conn is None:
+        if _PROXY:
+            # HTTPS через прокси: туннель CONNECT до сервера тайлов,
+            # сертификат Яндекса проверяется как обычно
+            conn = http.client.HTTPSConnection(_PROXY[0], _PROXY[1],
+                                               timeout=20, context=_SSL_CTX)
+            conn.set_tunnel(TILE_HOST, 443)
+        else:
+            conn = http.client.HTTPSConnection(TILE_HOST, timeout=20,
+                                               context=_SSL_CTX)
+        _local.conn = conn
+        _local.fresh = True
+    return conn
+
+
+def _drop_conn():
+    conn = getattr(_local, "conn", None)
+    if conn is not None:
+        try:
+            conn.close()
+        except OSError:
+            pass
+        _local.conn = None
+
 
 def _fetch_tile(tx, ty, zoom):
     """Скачивает один тайл с повторами. Возвращает bytes или None."""
-    url = TILE_URL.format(x=tx, y=ty, z=zoom)
-    last_ssl_error = False
-    for attempt in range(RETRIES):
+    path = TILE_PATH.format(x=int(tx), y=int(ty), z=int(zoom))
+    attempt = 0
+    while attempt < RETRIES:
+        conn = _get_conn()
+        reused = not getattr(_local, "fresh", True)
+        _local.fresh = False
         try:
-            req = urllib.request.Request(url, headers=HEADERS)
-            if last_ssl_error:
-                ctx = ssl._create_unverified_context()
-                resp = urllib.request.urlopen(req, timeout=20, context=ctx)
-            else:
-                resp = urllib.request.urlopen(req, timeout=20)
+            conn.request("GET", path, headers=HEADERS)
+            resp = conn.getresponse()
             data = resp.read()
-            if data:
+            if resp.will_close:
+                _drop_conn()  # сервер закрывает соединение — не ждем ошибки
+            if resp.status == 200 and data:
                 return data
-        except ssl.SSLError:
-            last_ssl_error = True
-        except Exception:
-            time.sleep(0.4 * (attempt + 1))
+        except (OSError, http.client.HTTPException):
+            _drop_conn()
+            if reused:
+                # сервер закрыл простаивавшее соединение — это не сбой:
+                # сразу повторяем на новом, без паузы и без траты попытки
+                continue
+        attempt += 1
+        if attempt < RETRIES:
+            time.sleep(0.4 * attempt)
     return None
 
 
