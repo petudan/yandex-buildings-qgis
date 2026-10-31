@@ -1,0 +1,16 @@
+[general]
+name=Yandex Buildings Extractor
+qgisMinimumVersion=3.16
+description=Extracts building footprints from Yandex Maps tiles by color / Извлечение контуров зданий с карты Яндекса по цвету тайлов
+about=Downloads Yandex Maps tiles for an area drawn on the map, detects buildings by fill color, vectorizes them and adds each building type to the project as a separate GeoJSON layer (EPSG:3395). Custom categories with an eyedropper, Russian and English interface. Requires opencv-python-headless (the plugin offers to install it). / Скачивает тайлы карты Яндекса для нарисованной области, выделяет здания по цвету, векторизует и добавляет каждый тип зданий отдельным слоем GeoJSON (EPSG:3395). Свои категории с пипеткой, интерфейс на русском и английском. Требуется opencv-python-headless (расширение предложит установить).
+version=1.17.0
+author=Dan
+email=petudan@gmail.com
+icon=icon.png
+homepage=https://github.com/petudan/yandex-buildings-qgis
+tracker=https://github.com/petudan/yandex-buildings-qgis/issues
+repository=https://github.com/petudan/yandex-buildings-qgis
+tags=yandex,buildings,tiles,vector,footprints
+category=Vector
+experimental=False
+deprecated=False
